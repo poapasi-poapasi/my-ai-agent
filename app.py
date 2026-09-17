@@ -67,7 +67,7 @@ for msg in st.session_state.messages:
     elif isinstance(msg, AIMessage) and msg.content:
         st.chat_message("assistant").write(msg.content)
 
-# Chat Input
+# Chat Input & Safe Response Handling
 user_input = st.chat_input("Ask me anything or check the weather...")
 
 if user_input:
@@ -75,19 +75,23 @@ if user_input:
     st.session_state.messages.append(HumanMessage(content=user_input))
     
     with st.spinner("Thinking..."):
-        response = llm_with_tools.invoke(st.session_state.messages)
-        st.session_state.messages.append(response)
-        
-        # If the model requested a weather lookup
-        if response.tool_calls:
-            for tool_call in response.tool_calls:
-                result = get_live_weather.invoke(tool_call["args"])
-                st.session_state.messages.append(
-                    ToolMessage(content=str(result), tool_call_id=tool_call["id"])
-                )
-            final_response = llm_with_tools.invoke(st.session_state.messages)
-            st.session_state.messages.append(final_response)
-            st.chat_message("assistant").write(final_response.content)
-        else:
-            # Direct narrative response
-            st.chat_message("assistant").write(response.content)
+        try:
+            response = llm_with_tools.invoke(st.session_state.messages)
+            st.session_state.messages.append(response)
+            
+            if response.tool_calls:
+                for tool_call in response.tool_calls:
+                    result = get_live_weather.invoke(tool_call["args"])
+                    st.session_state.messages.append(
+                        ToolMessage(content=str(result), tool_call_id=tool_call["id"])
+                    )
+                final_response = llm_with_tools.invoke(st.session_state.messages)
+                st.session_state.messages.append(final_response)
+                st.chat_message("assistant").write(final_response.content)
+            else:
+                st.chat_message("assistant").write(response.content)
+        except Exception as e:
+            if "RateLimit" in str(type(e)) or "429" in str(e):
+                st.warning("⏳ Google Gemini free usage limit reached. Please wait 60 seconds and try again!")
+            else:
+                st.error(f"An unexpected error occurred: {e}")
