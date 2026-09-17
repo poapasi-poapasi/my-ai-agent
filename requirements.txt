@@ -3,3 +3,7 @@ langchain-google-genai
 langchain-core
 requests
 pypdf
+python-docx
+duckduckgo-search
+yfinance
+matplotlib
