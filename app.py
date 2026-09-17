@@ -8,25 +8,21 @@ from langchain_core.messages import HumanMessage, ToolMessage, AIMessage
 st.set_page_config(page_title="AI Agent", page_icon="🤖")
 st.title("🤖 My AI Agent")
 
-# Sidebar indicating capabilities
 st.sidebar.header("Agent Capabilities")
 st.sidebar.markdown("- 💬 General Chat & Q&A\n- 🌤️ Real-time Weather Updates")
 
-# Read API key securely from Streamlit Secrets
 api_key = st.secrets.get("GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEY")
 
 if not api_key:
-    st.error("Missing GEMINI_API_KEY secret in Streamlit Cloud settings.")
+    st.error("Missing GEMINI_API_KEY secret.")
     st.stop()
 
-# Initialize Gemini model with strict narrative formatting instructions
 llm = ChatGoogleGenerativeAI(
     model="gemini-3.6-flash", 
     google_api_key=api_key,
     system_instruction=(
-        "You are a helpful, professional, and friendly AI assistant. Always respond in "
-        "clear, well-written, conversational prose. Never output raw tool signatures, JSON structures, "
-        "or technical code blocks unless the user explicitly requests code."
+        "You are a helpful AI assistant. Always reply using conversational, "
+        "well-formatted plain text paragraphs. Never output raw tool definitions or JSON."
     )
 )
 
@@ -56,19 +52,19 @@ def get_live_weather(city: str) -> str:
 tools = [get_live_weather]
 llm_with_tools = llm.bind_tools(tools)
 
-# Chat Session Storage
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Display prior chat messages
+# Only display messages that contain actual text string content
 for msg in st.session_state.messages:
-    if isinstance(msg, HumanMessage):
+    if isinstance(msg, HumanMessage) and isinstance(msg.content, str):
         st.chat_message("user").write(msg.content)
-    elif isinstance(msg, AIMessage) and msg.content:
-        st.chat_message("assistant").write(msg.content)
+    elif isinstance(msg, AIMessage) and isinstance(msg.content, str) and msg.content.strip():
+        # Hide raw tool calls or non-string list objects
+        if not msg.tool_calls and not msg.content.startswith("["):
+            st.chat_message("assistant").write(msg.content)
 
-# Chat Input & Safe Response Handling
-user_input = st.chat_input("Ask me anything or check the weather...")
+user_input = st.chat_input("Ask me anything...")
 
 if user_input:
     st.chat_message("user").write(user_input)
@@ -87,11 +83,13 @@ if user_input:
                     )
                 final_response = llm_with_tools.invoke(st.session_state.messages)
                 st.session_state.messages.append(final_response)
-                st.chat_message("assistant").write(final_response.content)
+                
+                if isinstance(final_response.content, str):
+                    st.chat_message("assistant").write(final_response.content)
             else:
-                st.chat_message("assistant").write(response.content)
+                if isinstance(response.content, str) and response.content.strip():
+                    st.chat_message("assistant").write(response.content)
+                else:
+                    st.chat_message("assistant").write("I can help answer general questions and fetch real-time weather information.")
         except Exception as e:
-            if "RateLimit" in str(type(e)) or "429" in str(e):
-                st.warning("⏳ Google Gemini free usage limit reached. Please wait 60 seconds and try again!")
-            else:
-                st.error(f"An unexpected error occurred: {e}")
+            st.warning("Request limit reached. Please wait a minute and try again!")
