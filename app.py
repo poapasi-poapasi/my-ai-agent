@@ -7,6 +7,10 @@ from langchain_core.messages import HumanMessage, ToolMessage, AIMessage
 
 st.title("🤖 My Permanent AI Agent")
 
+# Sidebar indicating capabilities
+st.sidebar.header("Agent Capabilities")
+st.sidebar.markdown("- 💬 General Q&A & Writing\n- 🌤️ Real-time Weather Updates")
+
 # Read API key securely from Streamlit Secrets
 api_key = st.secrets.get("GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEY")
 
@@ -14,7 +18,16 @@ if not api_key:
     st.error("Missing GEMINI_API_KEY secret.")
     st.stop()
 
-llm = ChatGoogleGenerativeAI(model="gemini-3.6-flash", google_api_key=api_key)
+# Configured with strict system instructions for natural, formal narrative responses
+llm = ChatGoogleGenerativeAI(
+    model="gemini-3.6-flash", 
+    google_api_key=api_key,
+    system_instruction=(
+        "You are a helpful, professional, and friendly AI assistant. Always respond in natural, "
+        "well-structured narrative paragraphs. Never output raw code blocks, JSON objects, internal tool signatures, "
+        "or technical syntax unless explicitly asked by the user."
+    )
+)
 
 @tool
 def get_live_weather(city: str) -> str:
