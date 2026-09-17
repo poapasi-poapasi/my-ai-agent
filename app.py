@@ -5,25 +5,28 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.tools import tool
 from langchain_core.messages import HumanMessage, ToolMessage, AIMessage
 
-st.title("🤖 My Permanent AI Agent")
+st.set_page_config(page_title="AI Agent", page_icon="🤖")
+st.title("🤖 My AI Agent")
 
+# Sidebar indicating capabilities
 st.sidebar.header("Agent Capabilities")
-st.sidebar.markdown("- 💬 General Q&A & Writing\n- 🌤️ Real-time Weather Updates")
+st.sidebar.markdown("- 💬 General Chat & Q&A\n- 🌤️ Real-time Weather Updates")
 
+# Read API key securely from Streamlit Secrets
 api_key = st.secrets.get("GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEY")
 
 if not api_key:
-    st.error("Missing GEMINI_API_KEY secret.")
+    st.error("Missing GEMINI_API_KEY secret in Streamlit Cloud settings.")
     st.stop()
 
-# System instruction forcing strictly conversational narrative prose
+# Initialize Gemini model with strict narrative formatting instructions
 llm = ChatGoogleGenerativeAI(
     model="gemini-3.6-flash", 
     google_api_key=api_key,
     system_instruction=(
-        "You are a helpful, professional, and friendly AI assistant. "
-        "When describing your capabilities, speak naturally in full narrative sentences. "
-        "Never output raw code, JSON objects, internal tool definitions, or function signatures."
+        "You are a helpful, professional, and friendly AI assistant. Always respond in "
+        "clear, well-written, conversational prose. Never output raw tool signatures, JSON structures, "
+        "or technical code blocks unless the user explicitly requests code."
     )
 )
 
@@ -57,46 +60,34 @@ llm_with_tools = llm.bind_tools(tools)
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Display conversation (only show narrative content, filter out raw tool objects)
+# Display prior chat messages
 for msg in st.session_state.messages:
     if isinstance(msg, HumanMessage):
         st.chat_message("user").write(msg.content)
     elif isinstance(msg, AIMessage) and msg.content:
         st.chat_message("assistant").write(msg.content)
 
-user_input = st.chat_input("Ask me about the weather or general questions...")
+# Chat Input
+user_input = st.chat_input("Ask me anything or check the weather...")
 
 if user_input:
     st.chat_message("user").write(user_input)
     st.session_state.messages.append(HumanMessage(content=user_input))
     
-    # Process initial user prompt
-    response = llm_with_tools.invoke(st.session_state.messages)
-    st.session_state.messages.append(response)
-    
-    # If a tool execution was triggered, execute it silently and fetch the final text answer
-    if response.tool_calls:
-        for tool_call in response.tool_calls:
-            result = get_live_weather.invoke(tool_call["args"])
-            st.session_state.messages.append(
-                ToolMessage(content=str(result), tool_call_id=tool_call["id"])
-            )
-        # Fetch the model's final conversational translation of the result
-        final_response = llm_with_tools.invoke(st.session_state.messages)
-        st.session_state.messages.append(final_response)
+    with st.spinner("Thinking..."):
+        response = llm_with_tools.invoke(st.session_state.messages)
+        st.session_state.messages.append(response)
         
-        if final_response.content:
+        # If the model requested a weather lookup
+        if response.tool_calls:
+            for tool_call in response.tool_calls:
+                result = get_live_weather.invoke(tool_call["args"])
+                st.session_state.messages.append(
+                    ToolMessage(content=str(result), tool_call_id=tool_call["id"])
+                )
+            final_response = llm_with_tools.invoke(st.session_state.messages)
+            st.session_state.messages.append(final_response)
             st.chat_message("assistant").write(final_response.content)
         else:
-            st.chat_message("assistant").write("I have retrieved the details for you.")
-    else:
-        # Only render if the AI generated actual text (avoids rendering raw tool call signatures)
-        if response.content:
+            # Direct narrative response
             st.chat_message("assistant").write(response.content)
-        else:
-            # Handle edge cases where the AI tries to answer with an empty message
-            prompt_fix = HumanMessage(content="Please explain what you can do in clear, natural paragraphs without using raw code.")
-            st.session_state.messages.append(prompt_fix)
-            fallback = llm_with_tools.invoke(st.session_state.messages)
-            st.session_state.messages.append(fallback)
-            st.chat_message("assistant").write(fallback.content)
